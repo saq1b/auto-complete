@@ -44,23 +44,33 @@ export async function run() {
       range.insertText(word, Word.InsertLocation.replace);
     }
 
-    const inputBox = document.getElementById("textInput");
+    async function getCurrentWord() {
+      await Word.run(async (context) => {
+        const selection = context.document.getSelection();
+        selection.load("text");
+        await context.sync();
     
-    inputBox.addEventListener("input", (e) => {
-      const value = e.target.value;
-      const lastWord = value.split(/\s+/).pop();
-      
-      // Only suggest if it's alphabetic
-      if (/^[a-zA-Z]+$/.test(lastWord)) {
+        const text = selection.text;
+        const lastWord = text.split(/\s+/).pop();
+	console.log(lastWord);
         const suggestions = getSuggestions(lastWord);
-        showSuggestions(suggestions); // You'll create this function
+        showDropdownInDocument(suggestions);
+      });
+    }
+    Office.context.ui.displayDialogAsync(
+      "https://yourdomain.com/suggestions.html",
+      { height: 30, width: 20, displayInIframe: true },
+      function (asyncResult) {
+        // Handle dialog events
       }
-    
-      // Check for space or punctuation: end of word
-      if (/\s$/.test(value) || /[.,!?]$/.test(value)) {
-        trackWords(); // Update word memory on word completion
-      }
-    });
+    );
+    async function insertSuggestion(word) {
+      await Word.run(async (context) => {
+        const range = context.document.getSelection();
+        range.insertText(word + " ", Word.InsertLocation.replace);
+        await context.sync();
+      });
+    }
     // insert a paragraph at the end of the document.
     //const paragraph = context.document.body.insertParagraph("Hello World", Word.InsertLocation.end);
 
