@@ -1,82 +1,82 @@
-/*
- * Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT license.
- * See LICENSE in the project root for license information.
- */
 
-/* global document, Office, Word */
+// taskpane.js
+let typedWords = new Set();
 
-Office.onReady((info) => {
-  if (info.host === Office.HostType.Word) {
-    document.getElementById("sideload-msg").style.display = "none";
-    document.getElementById("app-body").style.display = "flex";
-    document.getElementById("run").onclick = run;
-  }
+Office.onReady(() => {
+  // Add your custom event handlers when Office is ready
+  document.getElementById("startTracking").onclick = () => {
+    trackWordsFromBody(); // Initial scan
+    startMonitoringTyping(); // Begin real-time tracking
+  };
 });
 
-export async function run() {
-  return Word.run(async (context) => {
-    /**
-     * Insert your Word code here
-     */
-     
-    const typedWords = new Set();
-    
-    function trackWords(context) {
-      const body = context.document.body;
-      body.getText().then(result => {
-        const words = result.value.match(/\b\w+\b/g);
-        if (words) {
-          words.forEach(word => typedWords.add(word));
-        }
-      });
-    } 
+function trackWordsFromBody() {
+  Word.run(async (context) => {
+    const body = context.document.body;
+    const text = body.text;
 
-    function getSuggestions(prefix) {
-      const lowerPrefix = prefix.toLowerCase();
-      const suggestions = Array.from(typedWords).filter(word =>
-        word.toLowerCase().startsWith(lowerPrefix)
-      );
-      return suggestions.slice(0, 5); // Show top 5 suggestions
+    const words = text.match(/\b\w+\b/g);
+    if (words) {
+      words.forEach((word) => typedWords.add(word));
+      console.log("Initial document scan:", Array.from(typedWords));
     }
-
-    function insertText(context, word) {
-      const range = context.document.getSelection();
-      range.insertText(word, Word.InsertLocation.replace);
-    }
-
-    async function getCurrentWord() {
-      await Word.run(async (context) => {
-        const selection = context.document.getSelection();
-        selection.load("text");
-        await context.sync();
-    
-        const text = selection.text;
-        const lastWord = text.split(/\s+/).pop();
-	console.log(lastWord);
-        const suggestions = getSuggestions(lastWord);
-        showDropdownInDocument(suggestions);
-      });
-    }
-    Office.context.ui.displayDialogAsync(
-      "https://yourdomain.com/suggestions.html",
-      { height: 30, width: 20, displayInIframe: true },
-      function (asyncResult) {
-        // Handle dialog events
-      }
-    );
-    async function insertSuggestion(word) {
-      await Word.run(async (context) => {
-        const range = context.document.getSelection();
-        range.insertText(word + " ", Word.InsertLocation.replace);
-        await context.sync();
-      });
-    }
-    // insert a paragraph at the end of the document.
-    //const paragraph = context.document.body.insertParagraph("Hello World", Word.InsertLocation.end);
-
-    // change the paragraph color to blue.
-    //paragraph.font.color = "blue";
 
     await context.sync();
+  }).catch((error) => console.error("trackWordsFromBody error:", error));
+}
+
+function getSuggestions(prefix) {
+  const lowerPrefix = prefix.toLowerCase();
+  const suggestions = Array.from(typedWords).filter((word) =>
+    word.toLowerCase().startsWith(lowerPrefix)
+  );
+  return suggestions.slice(0, 5); // Limit results
+}
+
+function insertSuggestion(word) {
+  Word.run(async (context) => {
+    const range = context.document.getSelection();
+    range.insertText(word + " ", Word.InsertLocation.replace);
+    await context.sync();
+  }).catch((error) => console.error("insertSuggestion error:", error));
+}
+
+function startMonitoringTyping() {
+  setInterval(() => {
+    Word.run(async (context) => {
+      const selection = context.document.getSelection();
+      selection.load("text");
+      await context.sync();
+
+      const text = selection.text;
+      const lastWord = text.split(/\s+/).pop();
+
+      if (/^[a-zA-Z]+$/.test(lastWord)) {
+        const suggestions = getSuggestions(lastWord);
+        if (suggestions.length > 0) {
+          showDropdown(suggestions);
+        }
+      }
+
+      if (/\s$/.test(text) || /[.,!?]$/.test(text)) {
+        trackWordsFromBody(); // Update memory
+      }
+    }).catch((error) => console.error("monitorTyping error:", error));
+  }, 1000); // Poll every second
+}
+
+function showDropdown(suggestions) {
+  const container = document.getElementById("suggestionsList");
+  container.innerHTML = "";
+
+  suggestions.forEach((suggestion) => {
+    const item = document.createElement("div");
+    item.className = "suggestion-item";
+    item.textContent = suggestion;
+    item.onclick = () => {
+      insertSuggestion(suggestion);
+      container.innerHTML = "";
+    };
+    container.appendChild(item);
   });
 }
